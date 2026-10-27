@@ -1,0 +1,9 @@
+INÍCIO DO RECONHECIMENTO LOCAL
+
+1. Configure DATABASE_URL em .env.local para o PostgreSQL facial_recognition.
+2. Instale as dependências de requirements.txt na .venv.
+3. O projeto web vizinho facial-recognition deve ter node_modules e public/models/face-api.
+4. Execute: .\.venv\Scripts\python.exe main.py reconhecer
+5. A câmera e a janela do OpenCV abrirão localmente. Pressione q para sair.
+
+O reconhecimento usa professores.embedding_fotos. Não precisa da tabela professor_sface_referencias nem do comando cadastrar. Chrome ou Edge é usado sem janela apenas para calcular descritores face-api compatíveis.
