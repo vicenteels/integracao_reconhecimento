@@ -2,11 +2,11 @@
 
 `python main.py reconhecer` abre a câmera e a janela local do OpenCV, como no fluxo original. Pressione `q` para sair. Nenhuma página é aberta.
 
-O reconhecimento lê `id`, `nome` e os cinco descritores `embedding_fotos` diretamente de `facial_recognition.professores`, em transações somente leitura. A câmera é capturada pelo OpenCV. Um processo local do Chrome ou Edge, sem janela, usa os mesmos modelos `@vladmandic/face-api` do cadastro web para gerar descritores compatíveis. A menor distância euclidiana abaixo de 0,6 identifica o professor, seguindo a regra em `../facial-recognition/lib/teachers.ts`.
+O reconhecimento lê `id`, `nome` e os cinco descritores `embedding_fotos` diretamente de `facial_recognition.professores`, em transações somente leitura. A câmera é capturada pelo OpenCV. Um processo local do Chrome ou Edge, sem janela, usa os mesmos modelos `@vladmandic/face-api` do cadastro web (copiados em `modelo/face-api`) para gerar descritores compatíveis. A menor distância euclidiana abaixo de 0,6 identifica o professor, seguindo a regra em `../facial-recognition/lib/teachers.ts`.
 
 ## Iniciar
 
-1. Mantenha o projeto web em `../facial-recognition`, com `node_modules` instalado e os modelos em `public/models/face-api`.
+1. Instale o Google Chrome, Chromium ou Edge (o `face-api.js` e os modelos já estão em `modelo/face-api`).
 2. Configure `DATABASE_URL` em `.env.local` neste diretório, apontando para `facial_recognition`, com permissão `SELECT` em `professores`.
 3. Execute `./.venv/Scripts/python.exe main.py reconhecer` no PowerShell. Use `--camera 1` se a câmera principal tiver outro índice.
 

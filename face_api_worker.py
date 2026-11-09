@@ -1,5 +1,6 @@
 """Executa face-api em Chrome sem janela; a câmera e a UI ficam no OpenCV."""
 import json
+import shutil
 import subprocess
 import tempfile
 import threading
@@ -8,9 +9,8 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parent
-WEB_PROJECT = ROOT.parent / "facial-recognition"
-FACE_API_JS = WEB_PROJECT / "node_modules/@vladmandic/face-api/dist/face-api.js"
-MODELS = WEB_PROJECT / "public/models/face-api"
+MODELS = ROOT / "modelo/face-api"
+FACE_API_JS = MODELS / "face-api.js"
 MODEL_FILES = {
     "ssd_mobilenetv1_model-weights_manifest.json", "ssd_mobilenetv1_model.bin",
     "face_landmark_68_model-weights_manifest.json", "face_landmark_68_model.bin",
@@ -19,13 +19,16 @@ MODEL_FILES = {
 CHROME_PATHS = (
     Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
     Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
+    Path("/opt/google/chrome/chrome"),
+    *(Path(found) for name in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "microsoft-edge")
+      if (found := shutil.which(name))),
 )
 
 
 class FaceApiWorker:
     def __init__(self):
         if not FACE_API_JS.is_file() or not all((MODELS / file).is_file() for file in MODEL_FILES):
-            raise RuntimeError("Modelos face-api não encontrados no projeto web vizinho.")
+            raise RuntimeError(f"Modelos face-api não encontrados em {MODELS}.")
         self.browser_path = next((path for path in CHROME_PATHS if path.is_file()), None)
         if self.browser_path is None:
             raise RuntimeError("Chrome ou Edge não encontrado para calcular os embeddings face-api.")

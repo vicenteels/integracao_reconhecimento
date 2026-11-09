@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>face-api worker</title>
+<script src="/face-api.js"></script>
+</head>
+<body>
+<script>
+"use strict";
+// Protocolo com face_api_worker.py:
+//   GET  /frame  -> JPEG mais recente (204 se ainda não houver), cabeçalho X-Frame-Sequence
+//   POST /status -> {ready: bool, error: string|null}
+//   POST /result -> {sequence, faces: [{box: {x, y, width, height}, score, descriptor: [128 floats]}]}
+const post = (path, body) => fetch(path, {
+  method: "POST",
+  headers: {"Content-Type": "application/json"},
+  body: JSON.stringify(body),
+}).catch(() => {});
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function setupBackend() {
+  const tf = faceapi.tf;
+  for (const backend of ["webgl", "wasm", "cpu"]) {
+    try {
+      if (await tf.setBackend(backend)) {
+        await tf.ready();
+        return backend;
+      }
+    } catch (_) { /* tenta o próximo */ }
+  }
+  throw new Error("Nenhum backend TensorFlow.js disponível");
+}
+
+async function loadImage(blob) {
+  const bitmap = await createImageBitmap(blob);
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  canvas.getContext("2d").drawImage(bitmap, 0, 0);
+  bitmap.close();
+  return canvas;
+}
+
+async function main() {
+  await setupBackend();
+  await Promise.all([
+    faceapi.nets.ssdMobilenetv1.loadFromUri("/models"),
+    faceapi.nets.faceLandmark68Net.loadFromUri("/models"),
+    faceapi.nets.faceRecognitionNet.loadFromUri("/models"),
+  ]);
+  const options = new faceapi.SsdMobilenetv1Options({minConfidence: 0.5});
+  await post("/status", {ready: true, error: null});
+
+  let lastSequence = -1;
+  for (;;) {
+    const response = await fetch("/frame", {cache: "no-store"}).catch(() => null);
+    if (!response || response.status !== 200) {
+      await sleep(100);
+      continue;
+    }
+    const sequence = Number(response.headers.get("X-Frame-Sequence"));
+    if (sequence === lastSequence) {
+      await sleep(50);
+      continue;
+    }
+    lastSequence = sequence;
+    const canvas = await loadImage(await response.blob());
+    const detections = await faceapi
+      .detectAllFaces(canvas, options)
+      .withFaceLandmarks()
+      .withFaceDescriptors();
+    const faces = detections.slice(0, 10).map((d) => ({
+      box: {
+        x: d.detection.box.x,
+        y: d.detection.box.y,
+        width: d.detection.box.width,
+        height: d.detection.box.height,
+      },
+      score: d.detection.score,
+      descriptor: Array.from(d.descriptor),
+    }));
+    await post("/result", {sequence, faces});
+  }
+}
+
+main().catch((error) => post("/status", {ready: false, error: String(error && error.message || error)}));
+</script>
+</body>
+</html>
