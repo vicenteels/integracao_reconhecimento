@@ -108,3 +108,41 @@ class PostgresStore:
                     )
         except psycopg.Error:
             raise RuntimeError("Não foi possível gravar referências SFace; confira a tabela e as permissões.") from None
+
+
+def registrar_acesso(database_url, sala_id, professor_id):
+    """Libera a reserva vigente da sala (RESERVA_ATIVA -> EM_USO) para o professor reconhecido.
+
+    Retorna (True, "EM_USO") quando liberou, (True, "JA_EM_USO") se a reserva do
+    professor já estava em uso, ou (False, "SEM_RESERVA" | "OUTRO_PROFESSOR").
+    Consulta e atualização ocorrem em uma transação com FOR UPDATE.
+    """
+    if not database_url:
+        raise RuntimeError("DATABASE_URL não configurada.")
+    sala_id, professor_id = teacher_id(sala_id), teacher_id(professor_id)
+    import psycopg
+    try:
+        with psycopg.connect(database_url, connect_timeout=5) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id, id_professor, status_reserva::text FROM reservas "
+                    "WHERE id_sala = %s AND data_hora_inicio <= now() AND data_hora_reserva > now() "
+                    "AND status_reserva IN ('RESERVA_ATIVA', 'EM_USO') "
+                    "ORDER BY data_hora_inicio FOR UPDATE",
+                    (sala_id,),
+                )
+                rows = cur.fetchall()
+                if not rows:
+                    return False, "SEM_RESERVA"
+                own = next((row for row in rows if teacher_id(row[1]) == professor_id), None)
+                if own is None:
+                    return False, "OUTRO_PROFESSOR"
+                if own[2] == "EM_USO":
+                    return True, "JA_EM_USO"
+                cur.execute(
+                    "UPDATE reservas SET status_reserva = 'EM_USO' WHERE id = %s",
+                    (own[0],),
+                )
+                return True, "EM_USO"
+    except psycopg.Error:
+        raise RuntimeError("Não foi possível consultar ou atualizar reservas no PostgreSQL.") from None

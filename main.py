@@ -156,7 +156,14 @@ def recognize(args):
     _, database_url = settings()
     if not database_url:
         raise RuntimeError("DATABASE_URL não configurada.")
-    recognize_local(database_url, args.camera)
+    sala = os.environ.get("ID_SALA", "").strip()
+    if not sala:
+        raise RuntimeError("ID_SALA não configurado em .env.local.")
+    try:
+        sala = teacher_id(sala)
+    except ValueError:
+        raise RuntimeError("ID_SALA precisa ser um UUID válido.") from None
+    recognize_local(database_url, sala, args.camera)
 
 
 def main():

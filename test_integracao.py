@@ -9,7 +9,8 @@ from core import Teacher, identify, validate_vectors
 from core import MODEL_ID
 from data import PostgresStore, parse_reference_rows, fetch_web_references
 from main import ReferenceCache, open_camera
-from local_recognition import match_teacher
+from data import registrar_acesso
+from local_recognition import AccessController, match_teacher
 
 
 def unit(index):
@@ -104,8 +105,67 @@ class IntegrationTests(unittest.TestCase):
 
     def test_local_face_api_distance_threshold(self):
         refs = [{"nome": "Professor Teste", "embedding_fotos": [unit(0)] * 5}]
-        self.assertEqual(match_teacher(unit(0), refs)[0], "Professor Teste")
+        self.assertEqual(match_teacher(unit(0), refs)[0]["nome"], "Professor Teste")
         self.assertIsNone(match_teacher(unit(1), refs))
+
+
+    def _registrar(self, rows, professor):
+        connection = MagicMock()
+        cursor = connection.__enter__.return_value.cursor.return_value.__enter__.return_value
+        cursor.fetchall.return_value = rows
+        fake = types.SimpleNamespace(connect=MagicMock(return_value=connection), Error=Exception)
+        with patch.dict(sys.modules, {"psycopg": fake}):
+            result = registrar_acesso("postgresql://example", str(uuid.uuid4()), professor)
+        return result, cursor
+
+    def test_reserva_sem_reserva_e_outro_professor_negam(self):
+        (result, cursor) = self._registrar([], self.id)
+        self.assertEqual(result, (False, "SEM_RESERVA"))
+        self.assertEqual(cursor.execute.call_count, 1)
+        self.assertIn("FOR UPDATE", cursor.execute.call_args.args[0])
+        outro = str(uuid.uuid4())
+        (result, cursor) = self._registrar([("r1", outro, "RESERVA_ATIVA")], self.id)
+        self.assertEqual(result, (False, "OUTRO_PROFESSOR"))
+        self.assertEqual(cursor.execute.call_count, 1)
+
+    def test_reserva_ativa_vira_em_uso(self):
+        rows = [("outra", str(uuid.uuid4()), "RESERVA_ATIVA"), ("minha", self.id, "RESERVA_ATIVA")]
+        (result, cursor) = self._registrar(rows, self.id)
+        self.assertEqual(result, (True, "EM_USO"))
+        sql, params = cursor.execute.call_args.args
+        self.assertIn("SET status_reserva = 'EM_USO'", sql)
+        self.assertEqual(params, ("minha",))
+
+    def test_reserva_em_uso_nao_e_finalizada(self):
+        (result, cursor) = self._registrar([("minha", self.id, "EM_USO")], self.id)
+        self.assertEqual(result, (True, "JA_EM_USO"))
+        self.assertEqual(cursor.execute.call_count, 1)
+        self.assertNotIn("FINALIZADO", cursor.execute.call_args.args[0])
+
+    def test_controle_de_acesso_espera_entre_reconhecimentos(self):
+        now = [100.0]
+        calls = []
+        def registrar(_url, _sala, professor):
+            calls.append(professor)
+            return True, "EM_USO" if len(calls) == 1 else "JA_EM_USO"
+        access = AccessController("url", "sala", cooldown=15, registrar=registrar, clock=lambda: now[0])
+        teacher = {"id": self.id, "nome": "Professor Teste"}
+        self.assertTrue(access.request(teacher, background=False))
+        self.assertIn("Sala liberada", access.current_message()[0])
+        now[0] += 1
+        self.assertFalse(access.request(teacher, background=False))
+        now[0] += 15
+        self.assertTrue(access.request(teacher, background=False))
+        self.assertIn("ja liberada", access.current_message()[0])
+        self.assertEqual(len(calls), 2)
+
+    def test_controle_de_acesso_negado(self):
+        access = AccessController("url", "sala", registrar=lambda *_: (False, "OUTRO_PROFESSOR"), clock=lambda: 0.0)
+        access.request({"id": self.id, "nome": "X"}, background=False)
+        self.assertEqual(access.current_message()[0], "Acesso facial negado: reserva de outro professor")
+        unknown = AccessController("url", "sala", clock=lambda: 0.0)
+        unknown.deny_unknown()
+        self.assertEqual(unknown.current_message()[0], "Acesso facial negado")
 
 
 if __name__ == "__main__":

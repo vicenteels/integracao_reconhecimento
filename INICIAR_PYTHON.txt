@@ -1,6 +1,6 @@
 INÍCIO DO RECONHECIMENTO LOCAL
 
-1. Configure DATABASE_URL em .env.local para o PostgreSQL facial_recognition.
+1. Configure DATABASE_URL (PostgreSQL facial_recognition) e ID_SALA (UUID da sala desta câmera) em .env.local.
 2. Instale as dependências de requirements.txt na .venv.
 3. Tenha Chrome, Chromium ou Edge instalado. O face-api.js e os modelos ficam em modelo/face-api.
 4. Execute: .\.venv\Scripts\python.exe main.py reconhecer  (Linux: .venv/bin/python main.py reconhecer)
